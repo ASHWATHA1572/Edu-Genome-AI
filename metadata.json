@@ -1,0 +1,6 @@
+{
+  "name": "EduGenome AI",
+  "description": "A hiring bias mitigation platform that assesses skills objectively and generates a Skill DNA score.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": []
+}
