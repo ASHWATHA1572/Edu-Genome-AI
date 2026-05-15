@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Github, Loader2, Dna, Code2, Globe, BrainCircuit, ChevronRight, Mail, AlignLeft, Send, Sparkles, Video, StopCircle, Mic, RefreshCw, Route, Target, Play, UserCheck, Eye, EyeOff, MessageSquare, Headphones, Search, X, BarChart2, Linkedin, TrendingUp, Lightbulb, Languages, Zap, Share2, Twitter, Presentation } from 'lucide-react';
+import { Github, Loader2, Dna, Code2, Globe, BrainCircuit, ChevronRight, Mail, AlignLeft, Send, Sparkles, Video, StopCircle, Mic, RefreshCw, Route, Target, Play, UserCheck, Eye, EyeOff, MessageSquare, Headphones, Search, X, BarChart2, Linkedin, TrendingUp, Lightbulb, Languages, Zap, Share2, Twitter, Presentation, CheckCircle2, Bell } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import Markdown from 'react-markdown';
@@ -9,12 +9,22 @@ import StudentDashboard from './components/StudentDashboard';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+interface Notification {
+  id: string;
+  candidateId: string;
+  type: string;
+  status: string;
+  timestamp: string;
+  read: boolean;
+  message: string;
+}
+
 function AppContent() {
   const [activeTab, setActiveTab] = useState<'github' | 'linkedin' | 'logic' | 'softskill' | 'roadmap' | 'bridge' | 'vision' | 'dashboard'>('dashboard');
   const [viewMode, setViewMode] = useState<'candidate' | 'recruiter'>('candidate');
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState(0);
-  const [language, setLanguage] = useState('English');
+  const [language, setLanguage] = useState('Auto-Detect');
   const [error, setError] = useState('');
 
   // Recruiter Dashboard State
@@ -28,16 +38,50 @@ function AppContent() {
   const [filterSkill, setFilterSkill] = useState('');
   const [filterCollege, setFilterCollege] = useState('');
   const [sortBy, setSortBy] = useState<'logic' | 'tech' | 'soft' | 'name' | 'id'>('id');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 3;
   const [comparisonView, setComparisonView] = useState<'radar' | 'bar'>('radar');
   const [selectedCandidateDetails, setSelectedCandidateDetails] = useState<string | null>(null);
   const [isOpeningDetails, setIsOpeningDetails] = useState(false);
-  const [candidateStatuses, setCandidateStatuses] = useState<Record<string, 'New' | 'Screening' | 'Interviewing' | 'Offered' | 'Rejected'>>({});
+  const [candidateStatuses, setCandidateStatuses] = useState<Record<string, 'New' | 'Screening' | 'Review' | 'Interviewing' | 'Offered' | 'Rejected'>>({});
   const [scheduledInterviews, setScheduledInterviews] = useState<Record<string, { date: string, time: string }>>({});
   const [schedulingCandidateIds, setSchedulingCandidateIds] = useState<string[]>([]);
   const [interviewForm, setInterviewForm] = useState({ date: '', time: '' });
 
   const [isNotifying, setIsNotifying] = useState(false);
   const [notificationSent, setNotificationSent] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  
+  const handleNotifyCandidate = (candidateId: string, status: string) => {
+    setIsNotifying(true);
+    const candidate = mockCandidates.find(c => c.id === candidateId);
+    const candidateName = candidate ? candidate.realName : `Candidate #${candidateId}`;
+    
+    let message = `Notification: Your application status for the current role has been updated to '${status}'.`;
+    if (status === 'Interviewing') message = `Great news! You have been advanced to the Interview Stage. Check your schedule soon.`;
+    if (status === 'Offered') message = `Congratulations! An offer has been extended based on your exceptional Skill DNA profile.`;
+    if (status === 'Rejected') message = `Thank you for your interest. After reviewing your DNA metrics, we have decided to move forward with other candidates at this time.`;
+    if (status === 'Screening') message = `Your Skill DNA assessment is now being screened by our expert panel.`;
+    if (status === 'Review') message = "Your profile is currently under Technical Review by our senior architects.";
+
+    const newNotification: Notification = {
+      id: Math.random().toString(36).substring(2, 11),
+      candidateId,
+      type: 'status_update',
+      status,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      read: false,
+      message
+    };
+    
+    setTimeout(() => {
+      setNotifications(prev => [newNotification, ...prev]);
+      setIsNotifying(false);
+      setNotificationSent(true);
+      setTimeout(() => setNotificationSent(false), 3000);
+    }, 600);
+  };
+
   const [showPitchDeck, setShowPitchDeck] = useState(false);
 
   const [careerStrategy, setCareerStrategy] = useState<Record<string, string>>({});
@@ -68,11 +112,9 @@ function AppContent() {
         Format: Use professional, encouraging markdown. Use bold for job titles.
       `;
 
-      const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt
-      });
-      const text = result.text;
+      const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
       setCareerStrategy(prev => ({ ...prev, [candidate.id]: text }));
     } catch (err) {
       console.error("Failed to generate strategy:", err);
@@ -146,9 +188,12 @@ function AppContent() {
     innovationLevel: number;
     top3VerifiedSkills: string[];
     unbiasedSummary: string;
+    targetJob: string;
+    recommendedRoadmap: string;
   }>(null);
 
   // Logic Assessment State
+  const [logicDifficulty, setLogicDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [logicProblem, setLogicProblem] = useState('');
   const [logicAnswer, setLogicAnswer] = useState('');
   const [logicLoading, setLogicLoading] = useState(false);
@@ -199,6 +244,10 @@ function AppContent() {
     }
   }, [selectedForComparison]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, minLogic, minTech, minSoft, filterSkill, filterCollege, sortBy]);
+
   const stopRecordingAndStream = () => {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop();
@@ -215,12 +264,10 @@ function AppContent() {
     if (!text.trim()) return;
     setTranslating(true);
     try {
-      const prompt = `Translate the following text from ${language} to English. Only provide the translation, nothing else.\n\nText: ${text}`;
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setBridgeTranslation(prev => prev + (prev ? ' ' : '') + (response.text || '').trim());
+      const prompt = `Identify the language of the following text and translate it to English. Only provide the translation, nothing else.\n\nText: ${text}`;
+      const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      setBridgeTranslation(prev => prev + (prev ? ' ' : '') + (result.response.text() || '').trim());
     } catch (err: any) {
       console.error(err);
       setError('Translation failed.');
@@ -245,13 +292,14 @@ function AppContent() {
         Format your response as a JSON object with keys: "job", "roadmap", and "explanation".
       `;
       
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
+      const model = ai.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: { responseMimeType: "application/json" }
       });
       
-      const data = JSON.parse(response.text || '{}');
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const data = JSON.parse(text || '{}');
       setRecruiterVerdict(data);
     } catch (err) {
       console.error(err);
@@ -328,46 +376,38 @@ function AppContent() {
     }
   };
 
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    setIsListening(false);
-    if (bridgeTranslation.trim()) {
-      generateRecruiterResponse();
-    }
-  };
-
   const generateRecruiterResponse = async () => {
     if (!bridgeTranslation.trim()) return;
     setIsRecruiterResponding(true);
     try {
-      const prompt = `You are a Global Talent Recruiter at a top tech company. A student just finished speaking an interview segment in ${language}. 
-      The translated transcript is: "${bridgeTranslation}".
-      
-      Respond to the student professionally, keeping it very conversational as if you are in a live room. Ask a follow-up question or give brief feedback.
-      Keep it short (1-2 sentences).
-      
-      Then, translate your response into ${language}.
-      
-      Return JSON: { "english": "...", "translated": "..." }`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { 
+      const model = ai.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               english: { type: Type.STRING },
-              translated: { type: Type.STRING }
+              translated: { type: Type.STRING },
+              identifiedLanguage: { type: Type.STRING }
             }
           }
         }
       });
+      const prompt = `You are a Global Talent Recruiter at a top tech company. A student just finished speaking an interview segment. 
+      The translated transcript is: "${bridgeTranslation}".
       
-      const data = JSON.parse(response.text || '{}');
+      First, identify the language used by the student if it's not English.
+      Then, respond to the student professionally, keeping it very conversational as if you are in a live room. Ask a follow-up question or give brief feedback.
+      Keep it short (1-2 sentences).
+      
+      Finally, translate your response into the student's identified language (${language}).
+      
+      Return JSON: { "english": "...", "translated": "...", "identifiedLanguage": "..." }`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const data = JSON.parse(text || '{}');
       setRecruiterAnswer(data.english || '');
       setRecruiterAnswerTranslated(data.translated || '');
 
@@ -385,6 +425,16 @@ function AppContent() {
     }
   };
 
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setIsListening(false);
+    if (bridgeTranslation.trim()) {
+      generateRecruiterResponse();
+    }
+  };
+
   const handleManualRecruiterResponse = async () => {
     if (!recruiterResponseInput.trim()) return;
     setIsRecruiterResponding(true);
@@ -397,12 +447,9 @@ function AppContent() {
       The response is: "${textToTranslate}".
       Only return the translated text without any preamble.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt
-      });
-      
-      const translated = response.text || '';
+      const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      const translated = result.response.text();
       setRecruiterAnswerTranslated(translated);
 
       // Text-to-Speech for the student
@@ -444,16 +491,15 @@ function AppContent() {
 
       Return JSON matching this schema.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
+      const model = ai.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              base: { type: Type.STRING, description: `The student's identified current base in ${language}` },
-              goal: { type: Type.STRING, description: `The target goal in ${language}` },
+              base: { type: Type.STRING, description: `The student's identified current base` },
+              goal: { type: Type.STRING, description: `The target goal` },
               steps: { 
                 type: Type.ARRAY, 
                 items: { 
@@ -473,7 +519,9 @@ function AppContent() {
         }
       });
 
-      const data = JSON.parse(response.text || '{}');
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const data = JSON.parse(text || '{}');
       setRoadmap(data);
     } catch (err: any) {
       setError(err.message || 'Failed to generate roadmap');
@@ -528,15 +576,14 @@ Specifically, include:
 4. A 'Target Job' they are ready for.
 5. A 'Recommended Roadmap' focus to reach the next level.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
+      const model = ai.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              summary: { type: Type.STRING, description: `A comprehensive paragraph explaining their strengths, dominant logic, and skill DNA in ${language}` },
+              summary: { type: Type.STRING, description: `A comprehensive paragraph explaining their strengths, dominant logic, and skill DNA` },
               topSkills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Array of 3-5 key technical or soft skills discovered" },
               dnaScore: { type: Type.NUMBER, description: "A score from 0 to 100 mapping their overall skill depth based on repo complexity" },
               targetJob: { type: Type.STRING, description: "A specific job role recommendation" },
@@ -547,7 +594,9 @@ Specifically, include:
         }
       });
 
-      const data = JSON.parse(response.text || '{}');
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const data = JSON.parse(text || '{}');
       setResult({
         ...data,
         reposAnalyzed: repos.length
@@ -577,15 +626,14 @@ Your Task:
 1. Ignore Bias: Completely ignore the candidate's name, gender, college name, and CGPA.
 2. Scan Projects: Identify the technical complexity of their projects (e.g., MERN stack, Java, Python).
 3. Evaluate Logic: Based on their project descriptions, rate their logical thinking and problem-solving ability.
-4. Generate Output: Provide a 'Skill DNA Score' in the requested JSON format format in ${language}.
+4. Generate Output: Provide a 'Skill DNA Score' in the requested JSON format format in ${language}. Include a 'targetJob' recommendation and a 'recommendedRoadmap' focus.
 
 Data:
 ${profileText}`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
+      const model = ai.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -594,14 +642,18 @@ ${profileText}`;
               architectureAndDesign: { type: Type.NUMBER, description: "Architecture & Design score 1-100" },
               innovationLevel: { type: Type.NUMBER, description: "Innovation Level score 1-100" },
               top3VerifiedSkills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of top 3 verified skills" },
-              unbiasedSummary: { type: Type.STRING, description: `A 2-line summary of their capability focusing only on Proof of Work in ${language}` }
+              unbiasedSummary: { type: Type.STRING, description: `A 2-line summary of their capability focusing only on Proof of Work` },
+              targetJob: { type: Type.STRING, description: "Recommended job role" },
+              recommendedRoadmap: { type: Type.STRING, description: "Concise growth roadmap focus" }
             },
-            required: ["technicalLogic", "architectureAndDesign", "innovationLevel", "top3VerifiedSkills", "unbiasedSummary"]
+            required: ["technicalLogic", "architectureAndDesign", "innovationLevel", "top3VerifiedSkills", "unbiasedSummary", "targetJob", "recommendedRoadmap"]
           }
         }
       });
 
-      const data = JSON.parse(response.text || '{}');
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const data = JSON.parse(text || '{}');
       setLinkedinResult(data);
     } catch (err: any) {
       setError(err.message || 'An error occurred during LinkedIn analysis.');
@@ -617,12 +669,23 @@ ${profileText}`;
     setLogicAnswer('');
     
     try {
-      const prompt = `Generate a short, practical coding problem focused on algorithmic and logical problem solving. Do NOT provide code or syntax. Describe the scenario in ${language}. Ensure the tone is encouraging and focused on evaluating raw logical thinking, independent of any specific programming language. At the end, ask the user to explain how they would solve it step-by-step in plain language.`;
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-      });
-      setLogicProblem(response.text || '');
+      let contextStr = "";
+      if (result) {
+        contextStr = `The candidate has a Skill DNA score of ${result.dnaScore}. Their top skills are: ${result.topSkills.join(', ')}. Target job: ${result.targetJob}.`;
+      } else if (linkedinResult) {
+        contextStr = `The candidate has a Technical Logic score of ${linkedinResult.technicalLogic}, Architecture score of ${linkedinResult.architectureAndDesign}. Top skills: ${linkedinResult.top3VerifiedSkills.join(', ')}.`;
+      }
+
+      const prompt = `Generate a ${logicDifficulty} difficulty practical coding problem focused on algorithmic and logical problem solving. 
+      ${contextStr ? `IMPORTANT: Personalize this problem for a candidate with the following skill profile to challenge their specific strengths: ${contextStr}` : 'The problem should be a general technical challenge.'}
+      The problem should involve a real-world scenario.
+      Do NOT provide code or syntax. Describe the scenario in ${language}. 
+      Ensure the tone is encouraging and focused on evaluating raw logical thinking, independent of any specific programming language. 
+      At the end, ask the user to explain how they would solve it step-by-step in plain language.`;
+      
+      const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      setLogicProblem(result.response.text() || '');
     } catch(err: any) {
       setError(err.message || "Failed to generate logic problem");
     } finally {
@@ -645,22 +708,24 @@ Please analyze their logical approach, completely ignoring English proficiency o
 Score their "Logical Accuracy" from 0 to 100 based purely on how they broke down the problem, their algorithmic thinking, and their edge-case handling.
 Provide a constructive feedback paragraph explaining their logical strengths and areas for improvement in ${language}.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
+      const model = ai.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               score: { type: Type.NUMBER, description: "Logical Accuracy score (0-100)" },
-              feedback: { type: Type.STRING, description: `Constructive feedback on their thought process, written in ${language}` }
+              feedback: { type: Type.STRING, description: `Constructive feedback on their thought process` }
             },
             required: ["score", "feedback"]
           }
         }
       });
-      const data = JSON.parse(response.text || '{}');
+      
+      const resultValue = await model.generateContent(prompt);
+      const textVal = resultValue.response.text();
+      const data = JSON.parse(textVal || '{}');
       setLogicScore(data);
     } catch(err: any) {
       setError(err.message || "Failed to evaluate logic");
@@ -728,20 +793,9 @@ Provide a constructive feedback paragraph explaining their logical strengths and
           
           const prompt = `Analyze this video introduction where the candidate speaks in ${language}. Ignore the picture quality. Evaluate the tone, confidence, body language, and communication style. Provide a 'Soft-Skill DNA' score from 0 to 100 representing their readiness for a global corporate environment. Also provide constructive feedback and tips for improvement in ${language}.`;
 
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: videoFile.type || "video/webm",
-                    data: base64data
-                  }
-                },
-                {text: prompt}
-              ]
-            },
-            config: {
+          const model = ai.getGenerativeModel({ 
+            model: "gemini-1.5-flash",
+            generationConfig: {
               responseMimeType: "application/json",
               responseSchema: {
                 type: Type.OBJECT,
@@ -754,8 +808,19 @@ Provide a constructive feedback paragraph explaining their logical strengths and
               }
             }
           });
+
+          const result = await model.generateContent([
+            {
+              inlineData: {
+                mimeType: videoFile.type || "video/webm",
+                data: base64data
+              }
+            },
+            {text: prompt}
+          ]);
           
-          const data = JSON.parse(response.text || '{}');
+          const text = result.response.text();
+          const data = JSON.parse(text || '{}');
           setSsScore(data);
         } catch (err: any) {
           setError(err.message || "Failed to analyze soft skills video");
@@ -929,7 +994,7 @@ Provide a constructive feedback paragraph explaining their logical strengths and
               <p className="text-slate-400 text-sm">
                 {activeTab === 'dashboard' && "Track your cross-lingual logic scores, technical DNA velocity, and verified merits."}
                 {activeTab === 'github' && 'Enter your GitHub username to authorize an AI-driven repository scan.'}
-                {activeTab === 'linkedin' && 'Paste your LinkedIn profile text or project descriptions for unbiased technical evaluation.'}
+                {activeTab === 'linkedin' && 'Paste your LinkedIn profile text for unbiased technical evaluation.'}
                 {activeTab === 'logic' && 'Solve a logic problem in your native language to prove your algorithmic thinking.'}
                 {activeTab === 'softskill' && 'Record a 30-second video introduction in any language to evaluate your communication readiness.'}
                 {activeTab === 'roadmap' && 'Get a custom DNA growth plan with free multilingual tutorials based on your strengths.'}
@@ -950,6 +1015,7 @@ Provide a constructive feedback paragraph explaining their logical strengths and
                   className="w-full pl-10 pr-4 py-3 bg-slate-800 text-sm text-slate-200 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none transition-all"
                 >
                   <optgroup label="Global">
+                    <option value="Auto-Detect">Auto-Detect</option>
                     <option value="English">English</option>
                     <option value="Spanish">Spanish</option>
                     <option value="French">French</option>
@@ -972,7 +1038,7 @@ Provide a constructive feedback paragraph explaining their logical strengths and
 
             {/* --- DASHBOARD TAB CONTENT --- */}
             {activeTab === 'dashboard' && (
-              <StudentDashboard username={username} language={language} githubResult={result} />
+              <StudentDashboard username={username} language={language} githubResult={result} notifications={notifications} />
             )}
 
             {/* --- GITHUB TAB CONTENT --- */}
@@ -1033,14 +1099,14 @@ Provide a constructive feedback paragraph explaining their logical strengths and
             {activeTab === 'linkedin' && (
               <form onSubmit={analyzeLinkedIn} className="space-y-6">
                 <div className="space-y-2">
-                  <label htmlFor="profileText" className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-2 block">LinkedIn Profile / Projects</label>
+                  <label htmlFor="profileText" className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-2 block">LinkedIn Profile</label>
                   <div className="relative">
                     <AlignLeft className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
                     <textarea 
                       id="profileText"
                       value={profileText}
                       onChange={(e) => setProfileText(e.target.value)}
-                      placeholder="Paste your LinkedIn text, summary, and project descriptions here..."
+                      placeholder="Paste your LinkedIn text and summary here..."
                       className="w-full pl-10 pr-4 py-3 bg-slate-800 text-sm text-slate-200 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-500 transition-all min-h-[150px]"
                       required
                     />
@@ -1070,21 +1136,48 @@ Provide a constructive feedback paragraph explaining their logical strengths and
             {/* --- LOGIC FIRST TAB CONTENT --- */}
             {activeTab === 'logic' && (
               <div className="space-y-6">
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Select Difficulty</p>
+                  <div className="flex gap-2">
+                    {(['Easy', 'Medium', 'Hard'] as const).map((diff) => (
+                      <button
+                        key={diff}
+                        onClick={() => setLogicDifficulty(diff)}
+                        className={`flex-1 py-1.5 px-3 text-[10px] font-bold uppercase tracking-widest rounded-lg border transition-all ${
+                          logicDifficulty === diff 
+                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' 
+                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300'
+                        }`}
+                      >
+                        {diff}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {!logicProblem ? (
-                  <button 
-                    onClick={generateProblem}
-                    disabled={isGeneratingProblem}
-                    className="w-full flex items-center justify-center gap-3 bg-slate-100 text-slate-900 font-bold py-4 px-6 rounded-xl shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed group overflow-hidden relative"
-                  >
-                    <div className="absolute inset-0 w-full h-full bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
-                    <span className="relative z-10 flex items-center gap-2">
-                      {isGeneratingProblem ? (
-                        <><Loader2 className="w-5 h-5 animate-spin" /> Generating Problem in {language}...</>
-                      ) : (
-                        <><AlignLeft className="w-5 h-5" /> Generate a Problem</>
-                      )}
-                    </span>
-                  </button>
+                  <div className="space-y-4">
+                    {(result || linkedinResult) && (
+                      <div className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg animate-in fade-in duration-700">
+                        <Dna className="w-3.5 h-3.5 text-indigo-400" />
+                        <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">DNA-Personalized Mode Active</span>
+                      </div>
+                    )}
+                    <button 
+                      onClick={generateProblem}
+                      disabled={isGeneratingProblem}
+                      className="w-full flex items-center justify-center gap-3 bg-slate-100 text-slate-900 font-bold py-4 px-6 rounded-xl shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed group overflow-hidden relative"
+                    >
+                      <div className="absolute inset-0 w-full h-full bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
+                      <span className="relative z-10 flex items-center gap-2">
+                        {isGeneratingProblem ? (
+                          <><Loader2 className="w-5 h-5 animate-spin" /> Tailoring Problem to your DNA...</>
+                        ) : (
+                          <><AlignLeft className="w-5 h-5" /> { (result || linkedinResult) ? 'Start Personalized Assessment' : 'Generate General Assessment' }</>
+                        )}
+                      </span>
+                    </button>
+                  </div>
                 ) : (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="p-5 bg-slate-800 border border-slate-700 rounded-2xl relative">
@@ -1800,6 +1893,26 @@ Provide a constructive feedback paragraph explaining their logical strengths and
                     ))}
                   </div>
                 </div>
+
+                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-800 pt-8">
+                  <div className="p-6 bg-slate-800/40 border border-slate-700 rounded-2xl">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Target className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-bold text-emerald-300 uppercase tracking-widest">Recommended Role</span>
+                    </div>
+                    <p className="text-xl font-black text-white">{linkedinResult.targetJob}</p>
+                  </div>
+                  
+                  <div className="p-6 bg-slate-800/40 border border-slate-700 rounded-2xl">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Route className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-amber-300 uppercase tracking-widest">Skill DNA Roadmap</span>
+                    </div>
+                    <div className="text-sm text-slate-300 leading-relaxed">
+                      <Markdown>{linkedinResult.recommendedRoadmap}</Markdown>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -2072,30 +2185,49 @@ Provide a constructive feedback paragraph explaining their logical strengths and
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {mockCandidates.filter(c => {
-               const query = searchQuery.toLowerCase();
-               const matchesName = c.realName.toLowerCase().includes(query);
-               const matchesAlias = `candidate #${c.id}`.toLowerCase().includes(query) || c.id.toLowerCase().includes(query);
-               const matchesSearch = searchQuery.trim() === '' || matchesName || matchesAlias;
-               
-               const matchesLogic = c.logic >= minLogic;
-               const matchesTech = c.tech.score >= minTech;
-               const matchesSoft = c.soft >= minSoft;
-               
-               const skillQuery = filterSkill.toLowerCase().trim();
-               const matchesSpecificSkill = skillQuery === '' || c.topSkills.some(s => s.toLowerCase().includes(skillQuery)) || c.tech.name.toLowerCase().includes(skillQuery);
-               
-               const collegeQuery = filterCollege.toLowerCase().trim();
-               const matchesCollege = collegeQuery === '' || c.college.toLowerCase().includes(collegeQuery);
+            {(() => {
+              const filteredAndSortedCandidates = mockCandidates.filter(c => {
+                 const query = searchQuery.toLowerCase();
+                 const matchesName = (c.realName || '').toLowerCase().includes(query);
+                 const matchesAlias = `candidate #${c.id}`.toLowerCase().includes(query) || c.id.toLowerCase().includes(query);
+                 const matchesSearch = searchQuery.trim() === '' || matchesName || matchesAlias;
+                 
+                 const matchesLogic = (c.logic || 0) >= minLogic;
+                 const matchesTech = (c.tech?.score || 0) >= minTech;
+                 const matchesSoft = (c.soft || 0) >= minSoft;
+                 
+                 const skillQuery = filterSkill.toLowerCase().trim();
+                 const matchesSpecificSkill = skillQuery === '' || (c.topSkills || []).some(s => s.toLowerCase().includes(skillQuery)) || (c.tech?.name || '').toLowerCase().includes(skillQuery);
+                 
+                 const collegeQuery = filterCollege.toLowerCase().trim();
+                 const matchesCollege = collegeQuery === '' || (c.college || '').toLowerCase().includes(collegeQuery);
 
-               return matchesSearch && matchesLogic && matchesTech && matchesSoft && matchesSpecificSkill && matchesCollege;
-            }).sort((a, b) => {
-               if (sortBy === 'logic') return b.logic - a.logic;
-               if (sortBy === 'tech') return b.tech.score - a.tech.score;
-               if (sortBy === 'soft') return b.soft - a.soft;
-               if (sortBy === 'name') return (a.realName || '').localeCompare(b.realName || '');
-               return 0;
-            }).map(candidate => {
+                 return matchesSearch && matchesLogic && matchesTech && matchesSoft && matchesSpecificSkill && matchesCollege;
+              }).sort((a, b) => {
+                 if (sortBy === 'logic') return b.logic - a.logic;
+                 if (sortBy === 'tech') return b.tech.score - a.tech.score;
+                 if (sortBy === 'soft') return b.soft - a.soft;
+                 if (sortBy === 'name') return (a.realName || '').localeCompare(b.realName || '');
+                 return 0;
+              });
+
+              const paginatedCandidates = filteredAndSortedCandidates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+              
+              if (paginatedCandidates.length === 0) {
+                return (
+                  <div className="col-span-full py-20 text-center space-y-4">
+                    <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto">
+                      <Search className="w-10 h-10 text-slate-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">No candidates found</h3>
+                      <p className="text-slate-500">Try adjusting your filters or search query.</p>
+                    </div>
+                  </div>
+                );
+              }
+
+              return paginatedCandidates.map(candidate => {
               const isRevealed = revealedCandidates[candidate.id];
 
               return (
@@ -2225,6 +2357,16 @@ Provide a constructive feedback paragraph explaining their logical strengths and
                         <Mail className="w-3.5 h-3.5" />
                       </button>
                       <button 
+                        onClick={() => {
+                          handleNotifyCandidate(candidate.id, candidateStatuses[candidate.id] || 'New');
+                          // Simple visual feedback could be added here if needed
+                        }}
+                        className="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center text-indigo-400 hover:bg-indigo-600/40 transition-all border border-indigo-500/30"
+                        title="Notify Candidate of Status Change"
+                      >
+                        <Bell className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
                          onClick={async () => {
                            const shareData = {
                              title: 'Skill DNA Profile',
@@ -2290,49 +2432,178 @@ Provide a constructive feedback paragraph explaining their logical strengths and
                     </button>
                     </div>
 
-                    <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setCandidateStatuses(prev => ({ ...prev, [candidate.id]: 'Offered' }));
-                      }}
-                      className={`flex-[1.5] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${candidateStatuses[candidate.id] === 'Offered' ? 'bg-emerald-600 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_15px_rgba(79,70,229,0.2)] hover:shadow-[0_0_25px_rgba(79,70,229,0.4)]'}`}
-                    >
-                      {candidateStatuses[candidate.id] === 'Offered' ? (
-                        <><UserCheck className="w-4 h-4" /> Offered</>
-                      ) : (
-                        <><Zap className="w-4 h-4 text-amber-300" /> Hire Candidate</>
-                      )}
-                    </button>
+                    <div className="space-y-3">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedForComparison(prev => 
+                              prev.includes(candidate.id) ? prev.filter(id => id !== candidate.id) : [...prev, candidate.id]
+                            );
+                          }}
+                          className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center transition-all border ${selectedForComparison.includes(candidate.id) ? 'bg-slate-800 border-indigo-500 text-indigo-400' : 'bg-transparent border-slate-700 text-slate-400 hover:bg-slate-800'}`}
+                        >
+                          {selectedForComparison.includes(candidate.id) ? 'Selected' : 'Compare'}
+                        </button>
 
-                    {(candidateStatuses[candidate.id] === 'Interviewing' || candidateStatuses[candidate.id] === 'Offered') && (
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSchedulingCandidateIds([candidate.id]);
+                        {(candidateStatuses[candidate.id] === 'Interviewing' || candidateStatuses[candidate.id] === 'Offered') && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSchedulingCandidateIds([candidate.id]);
+                            }}
+                            className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all border ${scheduledInterviews[candidate.id] ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}
+                          >
+                            <RefreshCw className={`w-3 h-3 ${scheduledInterviews[candidate.id] ? '' : 'text-indigo-400'}`} />
+                            {scheduledInterviews[candidate.id] ? 'Reschedule' : 'Schedule'}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <select 
+                          value={candidateStatuses[candidate.id] || 'New'}
+                          onChange={(e) => setCandidateStatuses(prev => ({ ...prev, [candidate.id]: e.target.value as any }))}
+                          className="flex-1 bg-slate-900 border border-slate-700 text-[10px] font-black uppercase tracking-widest text-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          <option value="New">Status: New</option>
+                          <option value="Review">Technical Review</option>
+                          <option value="Interviewing">Interviewing</option>
+                          <option value="Offered">Offer Extended</option>
+                          <option value="Rejected">Rejected</option>
+                        </select>
+                        <button
+                          onClick={() => sendNotification(candidate.id, candidateStatuses[candidate.id] || 'New')}
+                          disabled={isNotifying}
+                          className={`flex-[1.5] py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all border ${notificationSent ? 'bg-emerald-600 text-white border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900 hover:border-slate-700'}`}
+                        >
+                          {isNotifying ? <Loader2 className="w-3 h-3 animate-spin" /> : (notificationSent ? <CheckCircle2 className="w-3 h-3" /> : <Send className="w-3 h-3 text-indigo-400" />)}
+                          {notificationSent ? 'Sent' : 'Notify'}
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setCandidateStatuses(prev => ({ ...prev, [candidate.id]: 'Offered' }));
                         }}
-                        className={`flex-1 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all border ${scheduledInterviews[candidate.id] ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}
+                        className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${candidateStatuses[candidate.id] === 'Offered' ? 'bg-emerald-600 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_15px_rgba(79,70,229,0.2)] hover:shadow-[0_0_25px_rgba(79,70,229,0.4)]'}`}
                       >
-                        <RefreshCw className={`w-4 h-4 ${scheduledInterviews[candidate.id] ? '' : 'text-indigo-400'}`} />
-                        {scheduledInterviews[candidate.id] ? 'Reschedule' : 'Schedule'}
+                        {candidateStatuses[candidate.id] === 'Offered' ? (
+                          <><UserCheck className="w-4 h-4" /> Final Offer Sent</>
+                        ) : (
+                          <><Zap className="w-4 h-4 text-amber-300" /> Instant Hire (Offer)</>
+                        )}
                       </button>
-                    )}
+                    </div>
 
-                    <button
-                      onClick={() => {
-                        setSelectedForComparison(prev => 
-                          prev.includes(candidate.id) ? prev.filter(id => id !== candidate.id) : [...prev, candidate.id]
-                        );
-                      }}
-                      className={`py-3 px-4 rounded-xl text-sm font-bold flex items-center justify-center transition-all border ${selectedForComparison.includes(candidate.id) ? 'bg-slate-800 border-indigo-500 text-indigo-400' : 'bg-transparent border-slate-700 text-slate-400 hover:bg-slate-800'}`}
-                    >
-                      {selectedForComparison.includes(candidate.id) ? 'Selected' : 'Compare'}
-                    </button>
+                    <div className="mt-4 pt-4 border-t border-slate-800">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Share Profile</span>
+                        <Share2 className="w-3 h-3 text-slate-500" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            const text = `Check out this candidate's Skill DNA! Logic Score: ${candidate.fullSkillDNA.logic}, Architecture: ${candidate.fullSkillDNA.architecture}. #SkillDNA #BiasFreeHiring`;
+                            window.open(`https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`, '_blank');
+                          }}
+                          className="flex-1 py-2 bg-slate-900 border border-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-800 transition-colors"
+                          title="Share on LinkedIn"
+                        >
+                          <Linkedin className="w-3.5 h-3.5 text-blue-400" />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const text = `Verified Skill DNA: Logic ${candidate.fullSkillDNA.logic} | Architecture ${candidate.fullSkillDNA.architecture} | Tech ${candidate.fullSkillDNA.tech}. Bias-free technical evaluation via SkillDNA.`;
+                            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+                          }}
+                          className="flex-1 py-2 bg-slate-900 border border-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-800 transition-colors"
+                          title="Share on Twitter"
+                        >
+                          <Twitter className="w-3.5 h-3.5 text-sky-400" />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const subject = `Skill DNA Candidate Lead: #${candidate.id}`;
+                            const body = `Anonymous Candidate Technical Profile:\n\nSkill DNA Breakdown:\n- Logic: ${candidate.fullSkillDNA.logic}\n- Architecture: ${candidate.fullSkillDNA.architecture}\n- Innovation: ${candidate.fullSkillDNA.innovation}\n- Technical Proficiency: ${candidate.fullSkillDNA.tech}\n\nTop Skills: ${candidate.topSkills.join(', ')}\n\nView full DNA breakdown on the SkillDNA Recruiter Dashboard.`;
+                            window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                          }}
+                          className="flex-1 py-2 bg-slate-900 border border-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-800 transition-colors"
+                          title="Share via Email"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-slate-400" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               );
-            })}
+              });
+            })()}
           </div>
+
+          {/* Pagination Controls */}
+          {(() => {
+              const filteredCount = mockCandidates.filter(c => {
+                 const query = searchQuery.toLowerCase();
+                 const matchesName = (c.realName || '').toLowerCase().includes(query);
+                 const matchesAlias = `candidate #${c.id}`.toLowerCase().includes(query) || c.id.toLowerCase().includes(query);
+                 const matchesSearch = searchQuery.trim() === '' || matchesName || matchesAlias;
+                 const matchesLogic = (c.logic || 0) >= minLogic;
+                 const matchesTech = (c.tech?.score || 0) >= minTech;
+                 const matchesSoft = (c.soft || 0) >= minSoft;
+                 const skillQuery = filterSkill.toLowerCase().trim();
+                 const matchesSpecificSkill = skillQuery === '' || (c.topSkills || []).some(s => s.toLowerCase().includes(skillQuery)) || (c.tech?.name || '').toLowerCase().includes(skillQuery);
+                 const collegeQuery = filterCollege.toLowerCase().trim();
+                 const matchesCollege = collegeQuery === '' || (c.college || '').toLowerCase().includes(collegeQuery);
+                 return matchesSearch && matchesLogic && matchesTech && matchesSoft && matchesSpecificSkill && matchesCollege;
+              }).length;
+              
+              const totalPages = Math.ceil(filteredCount / itemsPerPage);
+              
+              if (totalPages <= 1) return null;
+              
+              return (
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/50 border border-slate-800 p-4 rounded-2xl animate-in fade-in duration-700">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                    Showing <span className="text-white">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-white">{Math.min(currentPage * itemsPerPage, filteredCount)}</span> of <span className="text-white">{filteredCount}</span> Candidates
+                  </p>
+                  
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-white hover:border-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ChevronRight className="w-5 h-5 rotate-180" />
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`w-10 h-10 rounded-lg text-xs font-bold transition-all ${
+                            currentPage === page 
+                              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.4)]' 
+                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-white hover:border-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              );
+          })()}
 
           {/* Floating Compare Button */}
           {selectedForComparison.length > 1 && !showComparison && (
@@ -2694,12 +2965,21 @@ Provide a constructive feedback paragraph explaining their logical strengths and
                                     <p className="text-xs text-slate-400 mb-1">{candidate.college} • {candidate.cgpa} CGPA</p>
                                   )}
                                 </div>
-                                <button 
-                                  onClick={() => setSelectedForComparison(prev => prev.filter(cId => cId !== candidate.id))}
-                                  className="text-slate-500 hover:text-red-400 transition-colors"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => handleNotifyCandidate(candidate.id, candidateStatuses[candidate.id] || 'New')}
+                                    className="text-slate-500 hover:text-indigo-400 transition-colors"
+                                    title="Notify Candidate"
+                                  >
+                                    <Bell className="w-4 h-4" />
+                                  </button>
+                                  <button 
+                                    onClick={() => setSelectedForComparison(prev => prev.filter(cId => cId !== candidate.id))}
+                                    className="text-slate-500 hover:text-red-400 transition-colors"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
 
                               <div className="space-y-4 mb-6 relative">
@@ -2885,28 +3165,74 @@ Provide a constructive feedback paragraph explaining their logical strengths and
 
                       <div className="p-6 md:p-8 overflow-auto flex-1 space-y-8">
                         <div>
-                          <h4 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">
-                            <Dna className="w-4 h-4 text-indigo-400" /> Full Skill DNA Breakdown
+                          <h4 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-slate-400 mb-6">
+                            <BarChart2 className="w-4 h-4 text-indigo-400" /> Skill DNA Comparison (Individual vs. Global Average)
                           </h4>
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                          
+                          <div className="h-[300px] w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-4">
+                            {(() => {
+                              const avgArchitecture = mockCandidates.reduce((acc, c) => acc + c.fullSkillDNA.architecture, 0) / mockCandidates.length;
+                              const avgInnovation = mockCandidates.reduce((acc, c) => acc + c.fullSkillDNA.innovation, 0) / mockCandidates.length;
+                              const avgLogic = mockCandidates.reduce((acc, c) => acc + c.fullSkillDNA.logic, 0) / mockCandidates.length;
+                              const avgTech = mockCandidates.reduce((acc, c) => acc + c.fullSkillDNA.tech, 0) / mockCandidates.length;
+                              const avgSoft = mockCandidates.reduce((acc, c) => acc + c.fullSkillDNA.soft, 0) / mockCandidates.length;
+
+                              const chartData = [
+                                { name: 'Logic', candidate: candidate.fullSkillDNA.logic, average: Math.round(avgLogic) },
+                                { name: 'Architecture', candidate: candidate.fullSkillDNA.architecture, average: Math.round(avgArchitecture) },
+                                { name: 'Innovation', candidate: candidate.fullSkillDNA.innovation, average: Math.round(avgInnovation) },
+                                { name: 'Technology', candidate: candidate.fullSkillDNA.tech, average: Math.round(avgTech) },
+                                { name: 'Soft Skills', candidate: candidate.fullSkillDNA.soft, average: Math.round(avgSoft) },
+                              ];
+
+                              return (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                    <XAxis 
+                                      dataKey="name" 
+                                      stroke="#64748b" 
+                                      fontSize={10} 
+                                      fontWeight={600} 
+                                      tickLine={false} 
+                                      axisLine={false}
+                                      dy={10}
+                                    />
+                                    <YAxis 
+                                      stroke="#64748b" 
+                                      fontSize={10} 
+                                      tickLine={false} 
+                                      axisLine={false} 
+                                      domain={[0, 100]} 
+                                    />
+                                    <Tooltip 
+                                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#f8fafc', fontSize: '12px' }}
+                                      cursor={{ fill: '#1e293b', opacity: 0.4 }}
+                                    />
+                                    <Legend 
+                                      verticalAlign="top" 
+                                      align="right" 
+                                      wrapperStyle={{ fontSize: '10px', fontWeight: 600, paddingBottom: '20px' }}
+                                    />
+                                    <Bar name="Candidate Score" dataKey="candidate" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={32} />
+                                    <Bar name="Global Average" dataKey="average" fill="#334155" radius={[4, 4, 0, 0]} barSize={32} />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              );
+                            })()}
+                          </div>
+                          
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6">
                             {[
-                              { label: 'Logic', score: candidate.fullSkillDNA.logic, color: 'bg-amber-500', textColor: 'text-amber-400' },
-                              { label: 'Architecture', score: candidate.fullSkillDNA.architecture, color: 'bg-indigo-500', textColor: 'text-indigo-400' },
-                              { label: 'Innovation', score: candidate.fullSkillDNA.innovation, color: 'bg-emerald-500', textColor: 'text-emerald-400' },
-                              { label: 'Technology', score: candidate.fullSkillDNA.tech, color: 'bg-blue-500', textColor: 'text-blue-400' },
-                              { label: 'Soft Skills', score: candidate.fullSkillDNA.soft, color: 'bg-pink-500', textColor: 'text-pink-400' },
+                              { label: 'Logic', score: candidate.fullSkillDNA.logic, color: 'text-amber-400' },
+                              { label: 'Architecture', score: candidate.fullSkillDNA.architecture, color: 'text-indigo-400' },
+                              { label: 'Innovation', score: candidate.fullSkillDNA.innovation, color: 'text-emerald-400' },
+                              { label: 'Technology', score: candidate.fullSkillDNA.tech, color: 'text-blue-400' },
+                              { label: 'Soft Skills', score: candidate.fullSkillDNA.soft, color: 'text-pink-400' },
                             ].map(s => (
-                              <div key={s.label} className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col items-center">
-                                <div className="relative w-16 h-16 mb-3">
-                                  <svg className="w-full h-full transform -rotate-90">
-                                    <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-800" />
-                                    <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={176} strokeDashoffset={176 - (176 * s.score) / 100} className={s.textColor + " transition-all duration-1000"} />
-                                  </svg>
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <span className={`text-lg font-black ${s.textColor}`}>{s.score}</span>
-                                  </div>
-                                </div>
-                                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest text-center">{s.label}</p>
+                              <div key={s.label} className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                                <p className="text-[9px] uppercase font-black text-slate-500 tracking-widest mb-1">{s.label}</p>
+                                <p className={`text-xl font-black ${s.color}`}>{s.score}<span className="text-[10px] text-slate-500 ml-0.5">/100</span></p>
                               </div>
                             ))}
                           </div>
@@ -3010,6 +3336,13 @@ Provide a constructive feedback paragraph explaining their logical strengths and
                           ) : (
                             <><Zap className="w-5 h-5 text-amber-300" /> Hire Candidate</>
                           )}
+                        </button>
+
+                        <button
+                          onClick={() => handleNotifyCandidate(candidate.id, candidateStatuses[candidate.id] || 'New')}
+                          className="flex-1 sm:flex-none px-6 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 transition-all border border-slate-700"
+                        >
+                          <Bell className="w-4 h-4" /> Notify DNA
                         </button>
 
                         {!isRevealed ? (

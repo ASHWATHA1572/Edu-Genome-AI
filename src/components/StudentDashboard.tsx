@@ -13,13 +13,26 @@ import {
   Users, 
   Award,
   Calendar,
-  Globe
+  Globe,
+  Bell,
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 
 interface DNAData {
   subject: string;
   A: number;
   fullMark: number;
+}
+
+export interface Notification {
+  id: string;
+  candidateId: string;
+  type: string;
+  status: string;
+  timestamp: string;
+  read: boolean;
+  message: string;
 }
 
 const defaultDNA: DNAData[] = [
@@ -50,7 +63,8 @@ const heatmapData = generateHeatmapData();
 export default function StudentDashboard({ 
   username, 
   language, 
-  githubResult 
+  githubResult,
+  notifications = []
 }: { 
   username?: string, 
   language: string,
@@ -61,10 +75,46 @@ export default function StudentDashboard({
     reposAnalyzed: number; 
     targetJob: string; 
     recommendedRoadmap: string; 
-  }
+  },
+  notifications?: Notification[]
 }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8 pb-10">
+      {/* Notifications Section */}
+      {notifications.length > 0 && (
+        <div className="space-y-4">
+           <div className="flex items-center gap-2 mb-4">
+              <Bell className="w-4 h-4 text-amber-400" />
+              <h4 className="text-xs font-black text-white uppercase tracking-widest">Candidate Notifications</h4>
+           </div>
+           <div className="grid grid-cols-1 gap-3">
+              {notifications.map(notif => (
+                <div key={notif.id} className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-start gap-4 animate-in slide-in-from-right-4">
+                   <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5 text-indigo-400" />
+                   </div>
+                   <div className="flex-1">
+                      <div className="flex justify-between items-start mb-1">
+                         <p className="text-xs font-bold text-white">{notif.message}</p>
+                         <span className="text-[9px] font-bold text-slate-500 uppercase">{notif.timestamp}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${
+                            notif.status === 'Interviewing' ? 'bg-amber-500/20 text-amber-400' :
+                            notif.status === 'Offered' ? 'bg-emerald-500/20 text-emerald-400' :
+                            'bg-indigo-500/20 text-indigo-400'
+                         }`}>
+                           {notif.status}
+                         </span>
+                         <span className="text-[9px] font-medium text-slate-500 uppercase tracking-widest">Status Update</span>
+                      </div>
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
+      )}
+
       {/* Header Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl relative overflow-hidden group">
